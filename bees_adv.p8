@@ -10,8 +10,10 @@ function _init()
 	
 	x = 20
 	y = 120
-	generate_seed(1, x, y)
-	flag = false
+	generate_seed(1, 20, 120)
+	generate_seed(1, 48, 120)
+	generate_seed(1, 100, 120)
+	flag = true
 		
 end
 
@@ -27,7 +29,7 @@ function _update60()
 end
 
 function update_swarm()
- if n_flying > n_bees - 3 and #flowers > 0 then
+ if n_flying > n_bees - 5 and active_flowers > 0 then
   if rnd() < 0.01 then
 	  b = select_bee()
 	  f = select_flower()
@@ -46,8 +48,18 @@ function select_bee()
 end
 
 function select_flower()
- index = flr(rnd(#flowers)+1)
- return flowers[index]
+ local actives = {}
+ for i=1,n_flowers do
+  f = flowers[i]
+  if f.active then
+   //index = i
+   //return flowers[index]
+   add(actives, i)
+  end
+ end
+ index = flr(rnd(#actives))+1
+ return flowers[actives[index]]
+ //return -1
 end
 
 function assign_bee_flower(b, f)
@@ -61,42 +73,6 @@ function assign_bee_flower(b, f)
 	n_flying -= 1
 end
 
-function assign_bee(id, target_id, x, y)
- count = 0
- 
- for i = 1,n_bees do
-  b = bees[i]
-  if b.state == 0 then
-   b.state = 1
-		 r_x = flr(rnd(6))-3
-		 r_y = flr(rnd(6))-3
-		 b.target_id = target_id
-		 b.target_x = x + 8 + r_x
-		 b.target_y = y - 2 + r_y
-		 
-		 n_flying -= 1
-		 count = count + 1
-		 if count >= 3 then
-	   break
-	  end
-	  
-  end
-  
- end
- 
-end
-
-function reset_bee(id)
- for i = 1,n_bees do
-		b = bees[i]
-		if b.state == 1 and b.target_id == id then
-		 b.state = 2
-		 		 
-		 b.target_x = b.cen_x + b.x_r * cos(b.x_angle)
-	  b.target_y = b.cen_y + b.y_r * sin(b.y_angle)
-		end
-	end
-end
 
 function _draw()
  cls(1)
@@ -106,7 +82,7 @@ function _draw()
 	draw_seed()
 	draw_bee()
 	print(n_flying, 0,0)
-	if flag then print("flagged",0,8) end
+	if flag then print("active_flowers: "..active_flowers,0,8) end
 end
 
 
@@ -120,13 +96,7 @@ function init_bee()
   add(bees, set_bee())
 	end
 	
-	timers = {}
-	for i = 1,n_bees do
-		timer = {}
-		timer.active = false
-		timer.time = 0
-		add(timers, timer)
-	end
+	b_timers = {}
 	
 end
 
@@ -167,16 +137,31 @@ function update_bee()
 	  
 	  dist_x = b.target_x - b.x
 			dist_y = b.target_y - b.y
-			if abs(dist_x) > 2 then
+			cond_1 = abs(dist_x) > 2
+			cond_2 = abs(dist_y) > 2
+			
+			if cond_1 then
 			 b.x = b.x + (dist_x/abs(dist_x))/2
 			end
-			if abs(dist_y) > 2 then
+			if cond_2 then
 			 b.y = b.y + (dist_y/abs(dist_y))/2
 			end
+			
+			if not cond_1 and not cond_2 then
+			 timer = {}
+			 timer.time = time()
+			 timer.id = i
+			 add(b_timers, timer)
+			 b.state = 2
+			end
+			
+		// waiting at the flower
+		elseif b.state==2 then
+		
 	 
 	 // heading back to air
 	 // then reseting to state 0
-	 elseif b.state==2 then
+	 elseif b.state==3 then
 	  
 	  dist_x = b.target_x - b.x
 			dist_y = b.target_y - b.y
@@ -185,7 +170,7 @@ function update_bee()
 			
 			if rnd() < 0.02 then
 			 dir_x = dist_x/abs(dist_x)
-			 generate_polen(1, b.x, b.y, dist_x)
+			 //generate_polen(1, b.x, b.y, dist_x)
 			end
 			
 			if cond_1 then
@@ -198,11 +183,48 @@ function update_bee()
 			if not cond_1 and not cond_2 then
 			 b.state = 0
 			 n_flying += 1
+			 
 			end
 	  
 	 end
 	end
 	
+	for i=1,#b_timers do
+	 t = b_timers[i]
+	 if time() - t.time > 2 then
+	  reset_bee(t.id)
+	  b = bees[t.id]
+	  del_life(b.target_id)
+			b.target_id = 0
+	  del(b_timers, t)
+	  break
+	 end
+	end
+	
+end
+
+function reset_bee(id)
+		b = bees[id]
+		b.state = 3
+		 		 
+		b.target_x = b.cen_x + b.x_r * cos(b.x_angle)
+	 b.target_y = b.cen_y + b.y_r * sin(b.y_angle)
+end
+
+function unasign_bees(target_id)
+ for i=1,n_bees do
+		b = bees[i]
+		if b.target_id == target_id then
+		 reset_bee(i)
+		end
+	end
+	for i=#b_timers,1,-1 do
+	 t = b_timers[i]
+	 if bees[t.id].target_id == target_id then
+	  reset_bee(t.id)
+	  del(b_timers, t)
+	 end
+	end
 end
 
 function fly_around(id)
@@ -234,19 +256,39 @@ function draw_ground()
 end
 -->8
 function init_flower()
+	n_flowers = 5
+	active_flowers = 0
 	flowers = {}
+	
+	for i=1,n_flowers do
+		flower = {}
+		flower.active = false
+		add(flowers,flower)
+	end
+	
 	f_timers = {}
 	fl_id = 1
 end
 
 function generate_flower(seed)
+ flower_id = -1
+ for i=1,n_flowers do
+		if flowers[i].active == false then
+		 flower_id = i
+		 break
+		end
+	end
+	if flower_id == -1 then 
+	 return 
+	end
+
 	flower = {}
 	flower.size = 16
 	flower.lives = 3
 	flower.birth = time()
 	flower.death = time()+10
-	flower.id = fl_id
-	fl_id += 1
+	flower.active = true
+	flower.id = flower_id
 	
 	if seed.id == 1 then
 		flower.x = seed.x - 8
@@ -258,14 +300,18 @@ function generate_flower(seed)
   flower.spr = 1
 	end
 	
-	//assign_bee(1, flower.id, flower.x, flower.y)
+	flowers[flower_id] = flower
+	active_flowers += 1
 	
-	timer = {}
- timer.time = time() 
- add(f_timers,timer)
-	
-	add(flowers, flower)
-	return flower.id, flower.x, flower.y
+end
+
+function del_life(id)
+ flowers[id].lives -= 1
+ if flowers[id].lives == 0 then
+		flowers[id].active = false
+		active_flowers -= 1
+		unasign_bees(id)
+ end
 end
 
 function update_flower()
@@ -282,22 +328,24 @@ function update_flower()
  // end
  //end
 
- for i=1,#f_timers do
-  t = f_timers[i]
-  if time() - t.time > 5 then
-   f = del(flowers, flowers[i])
-   del(f_timers, f_timers[i])
-   reset_bee(f.id)
-   break
-  end
- end
+ //for i=1,#f_timers do
+ // t = f_timers[i]
+ // if time() - t.time > 5 then
+ //  f = del(flowers, flowers[i])
+ //  del(f_timers, f_timers[i])
+ //  reset_bee(f.id)
+ //  break
+ // end
+ //end
 end
 
 function draw_flower()
  for i=1,#flowers do
-  
-  f = flowers[i] 
-  spr(f.spr, f.x, f.y, f.size, 16)
+  f = flowers[i]
+  if f.active then
+   f = flowers[i] 
+   spr(f.spr, f.x, f.y, f.size, 16)
+  end
  end
 	//spr(3, flower.x, flower.y, flower.size, 16)
 end
@@ -326,9 +374,9 @@ function update_seed()
 
  if #s_timers > 0 then
   t = s_timers[1]
-  if time() - t.time > 8 then
+  if time() - t.time > 3 then
    seed = del(seeds, seeds[1])
-	  id, x, y = generate_flower(seed)
+	  generate_flower(seed)
 	  del(s_timers, t)
 	  if #s_timers > 0 then
     t = s_timers[1]
