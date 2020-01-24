@@ -8,4 +8,4 @@ You can see it running [here](https://www.lexaloffle.com/bbs/cart_info.php?cid=z
 
 # License
 
-Lincensed under the MIT License.
+Lincensed under the [MIT License](LICENSE).
